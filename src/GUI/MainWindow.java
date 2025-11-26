@@ -20,6 +20,7 @@ public class MainWindow extends JFrame {
         // Paneles principales
         JTabbedPane tabs = new JTabbedPane();
         tabs.add("Vista Blockchain", new BlockchainPanel(blockchain));
+        tabs.add("Tokens", new TokenPanel(blockchain));
         tabs.add("Wallets", new WalletPanel(blockchain));
         tabs.add("Minería", new MinerPanel(blockchain));
         tabs.add("Transacciones", new TransactionPanel(blockchain));

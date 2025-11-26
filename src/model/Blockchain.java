@@ -9,6 +9,7 @@ public class Blockchain extends BlockchainCore {
     public List<Transaction> pendingTransactions;
     public ContractRegistry contractRegistry;
     public TransactionPool txPool;
+    public TokenRegistry tokenRegistry;
     private Logger logger;
 
     private int difficulty = 3; // cuantos ceros iniciales en el hash para el PoW
@@ -20,6 +21,7 @@ public class Blockchain extends BlockchainCore {
         this.pendingTransactions = new ArrayList<>();
         this.contractRegistry = new ContractRegistry();
         this.txPool = new TransactionPool();
+        this.tokenRegistry = new TokenRegistry();
         this.logger = Logger.getInstance();
         logger.info("Blockchain inicializada");
         // no volver a crear genesis ni reasignar `chain`
