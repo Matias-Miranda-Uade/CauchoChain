@@ -2,19 +2,24 @@ package GUI;
 
 import model.Blockchain;
 import model.Token;
+import model.Transaction;
+import wallet.Wallet;
+
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 
 public class TokenPanel extends JPanel {
     private final Blockchain blockchain;
+    private final WalletPanel walletPanel;
     private final JTable tokenTable;
     private final DefaultTableModel tableModel;
     private final JTextArea detailsArea;
     private JComboBox<String> tokenCombo; // Variable de instancia para acceso global
 
-    public TokenPanel(Blockchain blockchain) {
+    public TokenPanel(Blockchain blockchain, WalletPanel walletPanel) {
         this.blockchain = blockchain;
+        this.walletPanel = walletPanel;
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
@@ -50,14 +55,9 @@ public class TokenPanel extends JPanel {
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tableScrollPane, detailsScrollPane);
         splitPane.setDividerLocation(0.65);
 
-        // Panel de quema de tokens
-        JPanel burnPanel = createBurnTokenPanel();
-
-        // Panel central con tabla y burn
+        // Panel central solo con la tabla y detalles
         JPanel centerPanel = new JPanel(new BorderLayout(10, 10));
         centerPanel.add(splitPane, BorderLayout.CENTER);
-        centerPanel.add(burnPanel, BorderLayout.SOUTH);
-
         add(centerPanel, BorderLayout.CENTER);
 
         // Panel inferior: Botón de actualización
@@ -72,146 +72,6 @@ public class TokenPanel extends JPanel {
         timer.start();
 
         refreshTokenList();
-    }
-
-    private JPanel createBurnTokenPanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createTitledBorder("Quemar (Burn) Tokens"));
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.weightx = 0.1;
-
-        // Campo: Seleccionar token
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        panel.add(new JLabel("Token:"), gbc);
-
-        tokenCombo = new JComboBox<>();
-        tokenCombo.setPreferredSize(new Dimension(150, 30));
-        gbc.gridx = 1;
-        gbc.weightx = 0.2;
-        panel.add(tokenCombo, gbc);
-
-        // Campo: Dirección que quema
-        gbc.gridx = 2;
-        gbc.weightx = 0.1;
-        panel.add(new JLabel("Dirección:"), gbc);
-
-        JTextField burnAddressField = new JTextField(15);
-        burnAddressField.setText("SYSTEM");
-        burnAddressField.setPreferredSize(new Dimension(120, 30));
-        gbc.gridx = 3;
-        gbc.weightx = 0.2;
-        panel.add(burnAddressField, gbc);
-
-        // Campo: Cantidad a quemar
-        gbc.gridx = 4;
-        gbc.weightx = 0.1;
-        panel.add(new JLabel("Cantidad:"), gbc);
-
-        JSpinner burnAmountSpinner = new JSpinner(new SpinnerNumberModel(1000L, 1L, Long.MAX_VALUE, 100L));
-        burnAmountSpinner.setPreferredSize(new Dimension(100, 30));
-        gbc.gridx = 5;
-        gbc.weightx = 0.15;
-        panel.add(burnAmountSpinner, gbc);
-
-        // Botón: Quemar
-        JButton burnButton = new JButton("Quemar");
-        burnButton.setPreferredSize(new Dimension(80, 30));
-        burnButton.addActionListener(e -> burnToken(tokenCombo, burnAddressField, burnAmountSpinner));
-        gbc.gridx = 6;
-        gbc.weightx = 0.1;
-        panel.add(burnButton, gbc);
-
-
-        // Actualizar combo cuando se selecciona una fila en la tabla
-        tokenTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                int selectedRow = tokenTable.getSelectedRow();
-                if (selectedRow != -1) {
-                    String symbol = (String) tableModel.getValueAt(selectedRow, 1);
-                    tokenCombo.setSelectedItem(symbol);
-                }
-            }
-        });
-
-        return panel;
-    }
-
-    private void burnToken(JComboBox<String> tokenCombo, JTextField addressField, JSpinner amountSpinner) {
-        if (tokenCombo.getItemCount() == 0) {
-            JOptionPane.showMessageDialog(this,
-                "Por favor selecciona un token de la tabla",
-                "Error",
-                JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        String symbol = (String) tokenCombo.getSelectedItem();
-        String address = addressField.getText();
-        long amount = ((Number) amountSpinner.getValue()).longValue();
-
-        if (address.isEmpty()) {
-            JOptionPane.showMessageDialog(this,
-                "Por favor ingresa una dirección",
-                "Error",
-                JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        if (amount <= 0) {
-            JOptionPane.showMessageDialog(this,
-                "La cantidad debe ser mayor a 0",
-                "Error",
-                JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        try {
-            Token token = blockchain.tokenRegistry.getTokenBySymbol(symbol);
-            if (token == null) {
-                JOptionPane.showMessageDialog(this,
-                    "Token no encontrado",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            long balanceBefore = token.getBalance(address);
-            boolean success = token.burn(address, amount);
-
-            if (success) {
-                long balanceAfter = token.getBalance(address);
-                blockchain.getLogger().info("Tokens quemados: " + symbol + " | De: " + address + " | Cantidad: " + amount + " | Nuevo balance: " + balanceAfter);
-
-                JOptionPane.showMessageDialog(this,
-                    "Tokens quemados exitosamente!\n" +
-                    "Símbolo: " + token.getSymbol() + "\n" +
-                    "Dirección: " + address + "\n" +
-                    "Cantidad quemada: " + amount + "\n" +
-                    "Balance anterior: " + balanceBefore + "\n" +
-                    "Balance actual: " + balanceAfter + "\n" +
-                    "Suministro total: " + token.getTotalSupply(),
-                    "Quema Exitosa",
-                    JOptionPane.INFORMATION_MESSAGE);
-
-                refreshTokenList();
-            } else {
-                JOptionPane.showMessageDialog(this,
-                    "No se pudo quemar los tokens.\n" +
-                    "Verifica que la dirección tenga suficiente balance.\n" +
-                    "Balance actual: " + balanceBefore,
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE);
-            }
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this,
-                "Error al quemar tokens: " + ex.getMessage(),
-                "Error",
-                JOptionPane.ERROR_MESSAGE);
-        }
     }
 
     private JPanel createTokenCreationPanel() {
@@ -289,24 +149,34 @@ public class TokenPanel extends JPanel {
             Token resultToken = blockchain.tokenRegistry.createToken(name, symbol, totalSupply, creator);
 
             if (isNewToken) {
-                // Es un token nuevo
+                // Es un token nuevo - asignar suministro a wallet system
+                if (walletPanel != null) {
+                    walletPanel.assignTokensToSystem(resultToken.getId(), totalSupply);
+                }
+
                 blockchain.getLogger().info("Token creado: " + resultToken.getName() + " (" + resultToken.getSymbol() + ")");
                 JOptionPane.showMessageDialog(this,
                     "Token creado exitosamente!\n" +
                     "Nombre: " + resultToken.getName() + "\n" +
                     "Símbolo: " + resultToken.getSymbol() + "\n" +
                     "Suministro: " + resultToken.getTotalSupply() + "\n" +
+                    "Suministro asignado a wallet: system\n" +
                     "ID: " + resultToken.getId().substring(0, 8) + "...",
                     "Token Creado",
                     JOptionPane.INFORMATION_MESSAGE);
             } else {
-                // Se agregó suministro a un token existente
+                // Se agregó suministro a un token existente - asignar a wallet system
+                if (walletPanel != null) {
+                    walletPanel.assignTokensToSystem(existingToken.getId(), totalSupply);
+                }
+
                 blockchain.getLogger().info("Suministro agregado a token existente: " + resultToken.getSymbol() + " (+" + totalSupply + ")");
                 JOptionPane.showMessageDialog(this,
                     "Token ya existía. Se agregó suministro exitosamente!\n" +
                     "Símbolo: " + resultToken.getSymbol() + "\n" +
                     "Suministro total ahora: " + resultToken.getTotalSupply() + "\n" +
-                    "Suministro agregado: " + totalSupply,
+                    "Suministro agregado: " + totalSupply + "\n" +
+                    "Asignado a wallet: system",
                     "Suministro Agregado",
                     JOptionPane.INFORMATION_MESSAGE);
             }
@@ -327,7 +197,6 @@ public class TokenPanel extends JPanel {
             return;
         }
 
-        String tokenName = (String) tableModel.getValueAt(selectedRow, 0);
         Token token = blockchain.tokenRegistry.getTokenBySymbol((String) tableModel.getValueAt(selectedRow, 1));
 
         if (token != null) {
@@ -388,4 +257,3 @@ public class TokenPanel extends JPanel {
         }
     }
 }
-

@@ -15,6 +15,9 @@ public class Blockchain extends BlockchainCore {
     private int difficulty = 3; // cuantos ceros iniciales en el hash para el PoW
     private float miningReward = 50.0f;
 
+    // Referencia a la lista de wallets gestionada por WalletPanel
+    private List<wallet.Wallet> wallets = new ArrayList<>();
+
     public Blockchain() {
         // BlockchainCore() ya inicializa `chain` y crea el genesis
         super();
@@ -167,5 +170,21 @@ public class Blockchain extends BlockchainCore {
 
     public Logger getLogger() {
         return logger;
+    }
+
+    // Permite setear la lista de wallets desde WalletPanel
+    public void setWallets(List<wallet.Wallet> wallets) {
+        this.wallets = wallets;
+    }
+
+    // Busca una wallet por dirección
+    public wallet.Wallet getWalletByAddress(String address) {
+        if (address == null || wallets == null) return null;
+        for (wallet.Wallet w : wallets) {
+            if (address.equals(w.getAddress())) {
+                return w;
+            }
+        }
+        return null;
     }
 }

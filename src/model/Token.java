@@ -26,8 +26,8 @@ public class Token {
         this.createdAt = System.currentTimeMillis();
         this.balances = new HashMap<>();
 
-        // El creador comienza con todo el suministro
-        this.balances.put(creator, totalSupply);
+        // No asignar automáticamente al creador
+        // Los tokens se asignan manualmente desde TokenPanel a la wallet system
     }
 
     // Getters
@@ -64,6 +64,17 @@ public class Token {
      */
     public long getBalance(String address) {
         return balances.getOrDefault(address, 0L);
+    }
+
+    /**
+     * Actualiza directamente el balance de una dirección
+     * Se usa internamente para asignar suministro inicial a la wallet system
+     */
+    public void updateBalance(String address, long newBalance) {
+        if (newBalance < 0) {
+            return;
+        }
+        balances.put(address, newBalance);
     }
 
     /**
@@ -117,7 +128,7 @@ public class Token {
 
     /**
      * Agrega más suministro a un token existente
-     * Los nuevos tokens se asignan al creador
+     * Los nuevos tokens se asignan manualmente desde la GUI
      */
     public void addToSupply(long amount, String caller) {
         if (amount <= 0) {
@@ -127,9 +138,7 @@ public class Token {
         // Incrementar el suministro total
         this.totalSupply += amount;
 
-        // Agregar los nuevos tokens al saldo del creador
-        long creatorBalance = balances.getOrDefault(creator, 0L);
-        balances.put(creator, creatorBalance + amount);
+        // No asignar automáticamente - se hace desde TokenPanel
     }
 
     @Override
@@ -137,4 +146,3 @@ public class Token {
         return String.format("%s (%s) - Total: %d - Creador: %s", name, symbol, totalSupply, creator.substring(0, 8) + "...");
     }
 }
-

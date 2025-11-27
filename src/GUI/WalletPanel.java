@@ -1,8 +1,8 @@
 package GUI;
 
-import miner.Miner;
 import model.Block;
 import model.Blockchain;
+import model.Token;
 import model.Transaction;
 import wallet.Wallet;
 
@@ -20,9 +20,12 @@ public class WalletPanel extends JPanel {
     private final DefaultTableModel transactionsTableModel;
     private final DefaultComboBoxModel<String> fromWalletModel;
     private final DefaultComboBoxModel<String> toWalletModel;
+    private final DefaultComboBoxModel<String> tokenModel;
     private final JComboBox<String> fromWalletCombo;
     private final JComboBox<String> toWalletCombo;
+    private final JComboBox<String> tokenCombo;
     private final JTextField amountField;
+    private final JLabel tokenBalanceLabel;
 
     public WalletPanel(Blockchain blockchain) {
         super(new BorderLayout());
@@ -38,9 +41,12 @@ public class WalletPanel extends JPanel {
         // Inicializar modelos de ComboBox
         this.fromWalletModel = new DefaultComboBoxModel<>();
         this.toWalletModel = new DefaultComboBoxModel<>();
+        this.tokenModel = new DefaultComboBoxModel<>();
         this.fromWalletCombo = new JComboBox<>(fromWalletModel);
         this.toWalletCombo = new JComboBox<>(toWalletModel);
+        this.tokenCombo = new JComboBox<>(tokenModel);
         this.amountField = new JTextField();
+        this.tokenBalanceLabel = new JLabel("Balance: -");
 
         // Panel izquierdo: Lista de wallets y creación
         JPanel leftPanel = new JPanel(new BorderLayout());
@@ -60,19 +66,26 @@ public class WalletPanel extends JPanel {
         rightPanel.setBorder(BorderFactory.createTitledBorder("Transacciones"));
 
         // Panel de envío
-        JPanel sendPanel = new JPanel(new GridLayout(4, 2, 5, 5));
+        JPanel sendPanel = new JPanel(new GridLayout(5, 2, 5, 5));
 
         sendPanel.add(new JLabel("Desde:"));
         sendPanel.add(fromWalletCombo);
         sendPanel.add(new JLabel("Para:"));
         sendPanel.add(toWalletCombo);
+        sendPanel.add(new JLabel("Token:"));
+        sendPanel.add(tokenCombo);
         sendPanel.add(new JLabel("Monto:"));
         sendPanel.add(amountField);
+        sendPanel.add(tokenBalanceLabel);
 
         JButton sendButton = new JButton("Enviar");
         sendButton.addActionListener(e -> sendTransaction());
         sendPanel.add(new JLabel(""));
         sendPanel.add(sendButton);
+
+        // Listeners para actualizar balance
+        fromWalletCombo.addActionListener(e -> updateTokenBalance());
+        tokenCombo.addActionListener(e -> updateTokenBalance());
 
         // Historial de transacciones
         JTable txTable = new JTable(transactionsTableModel);
@@ -91,17 +104,14 @@ public class WalletPanel extends JPanel {
 
         // Crear algunas wallets de ejemplo y actualizar la UI inicialmente
         SwingUtilities.invokeLater(() -> {
-            // Crear primera wallet con fondos iniciales
+            // Crear wallet SYSTEM para distribuir tokens
+            Wallet systemWallet = new Wallet("system");
+            wallets.add(systemWallet);
+
+            // Crear primera wallet sin fondos iniciales
             Wallet firstWallet = new Wallet("Principal");
             wallets.add(firstWallet);
 
-            // Crear transacción inicial y minarla
-            Transaction initialTx = new Transaction(null, firstWallet.getAddress(), 50.0f);
-            blockchain.createTransaction(initialTx);
-
-            // Minar el bloque inicial
-            Miner initialMiner = new Miner(2.0f, "InitialMiner");
-            blockchain.minePendingTransactions(initialMiner);
 
             // Crear segunda wallet
             Wallet secondWallet = new Wallet("Secundaria");
@@ -110,6 +120,8 @@ public class WalletPanel extends JPanel {
             // Actualizar la UI
             updateWalletsList();
             updateTransactionsList();
+            // Sincronizar la lista de wallets con la blockchain
+            blockchain.setWallets(wallets);
         });
 
         // Timer para actualización periódica
@@ -151,6 +163,8 @@ public class WalletPanel extends JPanel {
         wallets.add(wallet);
         updateWalletsList();
         updateTransactionsList();
+        // Sincronizar la lista de wallets con la blockchain
+        blockchain.setWallets(wallets);
 
         JOptionPane.showMessageDialog(
             this,
@@ -161,20 +175,95 @@ public class WalletPanel extends JPanel {
     }
 
     private void updateWalletsList() {
+        blockchain.tokenRegistry.syncBalancesFromBlockchain(blockchain);
+
+        // Guardar selección actual de los ComboBox
+        String selectedFromWallet = (String) fromWalletCombo.getSelectedItem();
+        String selectedToWallet = (String) toWalletCombo.getSelectedItem();
+        String selectedToken = (String) tokenCombo.getSelectedItem();
+
+        // Obtener todos los tokens existentes
+        List<Token> tokens = blockchain.tokenRegistry.getAllTokens();
+        Vector<String> columns = new Vector<>();
+        columns.add("Alias");
+        columns.add("Dirección");
+        for (Token token : tokens) {
+            columns.add(token.getSymbol());
+        }
+        walletsTableModel.setColumnIdentifiers(columns);
         walletsTableModel.setRowCount(0);
         fromWalletModel.removeAllElements();
         toWalletModel.removeAllElements();
 
         for (Wallet wallet : wallets) {
-            String address = wallet.getAddress();
             Vector<Object> row = new Vector<>();
-            row.add(address);  // Dirección completa de la wallet
             row.add(wallet.getAlias());
-            row.add(String.format("%.2f", wallet.getBalance(blockchain)));
+            row.add(wallet.getAddress());
+            for (Token token : tokens) {
+                long balance = blockchain.tokenRegistry.getBalance(token.getId(), wallet.getAddress());
+                row.add(balance);
+            }
             walletsTableModel.addRow(row);
-
             fromWalletModel.addElement(wallet.getAlias());
             toWalletModel.addElement(wallet.getAlias());
+        }
+        updateTokenList();
+
+        // Restaurar selección de los ComboBox si sigue existiendo
+        if (selectedFromWallet != null) {
+            fromWalletCombo.setSelectedItem(selectedFromWallet);
+        }
+        if (selectedToWallet != null) {
+            toWalletCombo.setSelectedItem(selectedToWallet);
+        }
+        if (selectedToken != null) {
+            tokenCombo.setSelectedItem(selectedToken);
+        }
+    }
+
+    private void updateTokenList() {
+        tokenModel.removeAllElements();
+        List<Token> tokens = blockchain.tokenRegistry.getAllTokens();
+
+        if (tokens.isEmpty()) {
+            tokenModel.addElement("(Sin tokens)");
+        } else {
+            for (Token token : tokens) {
+                tokenModel.addElement(token.getSymbol() + " - " + token.getName());
+            }
+        }
+
+        updateTokenBalance();
+    }
+
+    private void updateTokenBalance() {
+        try {
+            if (blockchain.tokenRegistry.getAllTokens().isEmpty()) {
+                tokenBalanceLabel.setText("Balance: - (sin tokens)");
+                return;
+            }
+
+            int fromIndex = fromWalletCombo.getSelectedIndex();
+            int tokenIndex = tokenCombo.getSelectedIndex();
+
+            if (fromIndex < 0 || tokenIndex < 0 || fromIndex >= wallets.size()) {
+                tokenBalanceLabel.setText("Balance: -");
+                return;
+            }
+
+            Wallet fromWallet = wallets.get(fromIndex);
+            List<Token> tokens = blockchain.tokenRegistry.getAllTokens();
+
+            if (tokenIndex >= tokens.size()) {
+                tokenBalanceLabel.setText("Balance: -");
+                return;
+            }
+
+            Token selectedToken = tokens.get(tokenIndex);
+            long balance = blockchain.tokenRegistry.getBalance(selectedToken.getId(), fromWallet.getAddress());
+            tokenBalanceLabel.setText("Balance: " + balance + " " + selectedToken.getSymbol());
+        } catch (Exception e) {
+            tokenBalanceLabel.setText("Balance: error");
         }
     }
 
@@ -183,35 +272,35 @@ public class WalletPanel extends JPanel {
             // Obtener los índices seleccionados
             int fromIndex = fromWalletCombo.getSelectedIndex();
             int toIndex = toWalletCombo.getSelectedIndex();
+            int tokenIndex = tokenCombo.getSelectedIndex();
 
-            if (fromIndex < 0 || toIndex < 0 || fromIndex >= wallets.size() || toIndex >= wallets.size()) {
+            if (fromIndex < 0 || toIndex < 0 || tokenIndex < 0 ||
+                fromIndex >= wallets.size() || toIndex >= wallets.size()) {
                 JOptionPane.showMessageDialog(this,
-                    "Por favor selecciona carteras válidas",
+                    "Por favor selecciona carteras y token válidos",
                     "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
-            // Obtener las wallets por sus alias
-            String fromAlias = fromWalletCombo.getSelectedItem().toString();
-            String toAlias = toWalletCombo.getSelectedItem().toString();
-
-            Wallet fromWallet = null;
-            Wallet toWallet = null;
-
-            // Encontrar las wallets correspondientes
-            for (Wallet w : wallets) {
-                if (w.getAlias().equals(fromAlias)) fromWallet = w;
-                if (w.getAlias().equals(toAlias)) toWallet = w;
-            }
-
-            if (fromWallet == null || toWallet == null) {
+            List<Token> tokens = blockchain.tokenRegistry.getAllTokens();
+            if (tokens.isEmpty()) {
                 JOptionPane.showMessageDialog(this,
-                    "Error al encontrar las wallets seleccionadas",
+                    "No hay tokens disponibles en la blockchain",
                     "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
-            float amount = Float.parseFloat(amountField.getText());
+            if (tokenIndex >= tokens.size()) {
+                JOptionPane.showMessageDialog(this,
+                    "Token inválido",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            // Obtener las wallets
+            Wallet fromWallet = wallets.get(fromIndex);
+            Wallet toWallet = wallets.get(toIndex);
+            Token selectedToken = tokens.get(tokenIndex);
 
             if (fromWallet == toWallet) {
                 JOptionPane.showMessageDialog(this,
@@ -220,6 +309,8 @@ public class WalletPanel extends JPanel {
                 return;
             }
 
+            long amount = Long.parseLong(amountField.getText());
+
             if (amount <= 0) {
                 JOptionPane.showMessageDialog(this,
                     "El monto debe ser mayor a 0",
@@ -227,25 +318,51 @@ public class WalletPanel extends JPanel {
                 return;
             }
 
-            // Crear y añadir la transacción
-            Transaction tx = fromWallet.createTransaction(toWallet.getAddress(), amount, blockchain);
-            blockchain.createTransaction(tx);
+            // Verificar balance
+            long balance = blockchain.tokenRegistry.getBalance(selectedToken.getId(), fromWallet.getAddress());
+            if (balance < amount) {
+                JOptionPane.showMessageDialog(this,
+                    "Balance insuficiente. Balance actual: " + balance + " " + selectedToken.getSymbol(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
 
-            JOptionPane.showMessageDialog(this,
-                "Transacción enviada correctamente",
-                "Éxito", JOptionPane.INFORMATION_MESSAGE);
+            // Realizar la transferencia Y registrar en la blockchain
+            boolean success = false;
+            try {
+                // Crear transacción manualmente y firmarla
+                Transaction tx = new Transaction(fromWallet.getAddress(), toWallet.getAddress(), amount);
+                tx.setDescription("TOKEN:" + selectedToken.getSymbol() + ":" + amount);
+                tx.signTransaction(fromWallet.getKeyPair());
+                blockchain.createTransaction(tx);
+                // Transferir en el token registry
+                success = blockchain.tokenRegistry.transferToken(selectedToken.getId(), fromWallet.getAddress(), toWallet.getAddress(), amount);
+            } catch (Exception ex) {
+                blockchain.getLogger().error("Error creando transacción: " + ex.getMessage());
+                success = false;
+            }
 
-            amountField.setText("");
-
-            // Actualizar inmediatamente la UI
-            SwingUtilities.invokeLater(() -> {
+            if (success) {
+                blockchain.getLogger().info("Transferencia de " + amount + " " + selectedToken.getSymbol() +
+                    " de " + fromWallet.getAlias() + " a " + toWallet.getAlias());
+                JOptionPane.showMessageDialog(this,
+                    "Transferencia de " + amount + " " + selectedToken.getSymbol() + " exitosa\n" +
+                    "De: " + fromWallet.getAlias() + "\n" +
+                    "Para: " + toWallet.getAlias() + "\n\n" +
+                    "La transacción está pendiente de minería",
+                    "Éxito", JOptionPane.INFORMATION_MESSAGE);
+                amountField.setText("");
                 updateWalletsList();
                 updateTransactionsList();
-            });
+            } else {
+                JOptionPane.showMessageDialog(this,
+                    "Error al realizar la transferencia",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            }
 
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(this,
-                "Por favor ingresa un monto válido",
+                "Por favor ingresa un monto válido (número entero)",
                 "Error", JOptionPane.ERROR_MESSAGE);
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this,
@@ -271,30 +388,56 @@ public class WalletPanel extends JPanel {
     }
 
     private String getAliasForAddress(String address) {
-        if (address == null) return "SISTEMA";
-        for (Wallet w : wallets) {
-            if (w.getAddress().equals(address)) {
-                return w.getAlias();
+        if (address == null) {
+            return null;
+        }
+
+        for (Wallet wallet : wallets) {
+            if (wallet.getAddress().equals(address)) {
+                return wallet.getAlias();
             }
         }
-        return address.substring(0, 8) + "...";
+
+        return null;
     }
 
     private void addTransactionToTable(Transaction tx, String status) {
-        Vector<Object> row = new Vector<>();
-        // Para transacciones de recompensa (minería)
-        if (tx.fromAddress == null) {
-            row.add("SISTEMA");
-            row.add(getAliasForAddress(tx.toAddress));
-            row.add(String.format("%.2f", tx.amount));
-            row.add("Recompensa de minería");
-        } else {
-            // Para transacciones normales
-            row.add(getAliasForAddress(tx.fromAddress));
-            row.add(getAliasForAddress(tx.toAddress));
-            row.add(String.format("%.2f", tx.amount));
-            row.add(status);
+        String fromAlias = getAliasForAddress(tx.fromAddress);
+        String toAlias = getAliasForAddress(tx.toAddress);
+
+        transactionsTableModel.addRow(new Object[]{
+            fromAlias != null ? fromAlias : tx.fromAddress,
+            toAlias != null ? toAlias : tx.toAddress,
+            tx.amount,
+            status
+        });
+    }
+
+    /**
+     * Asigna tokens a la wallet system cuando se crea un nuevo token
+     * Este método es llamado desde TokenPanel
+     */
+    public void assignTokensToSystem(String tokenId, long amount) {
+        Wallet systemWallet = getWalletByAlias("system");
+        if (systemWallet != null && amount > 0) {
+            Token token = blockchain.tokenRegistry.getToken(tokenId);
+            if (token != null) {
+                long currentBalance = token.getBalance(systemWallet.getAddress());
+                token.updateBalance(systemWallet.getAddress(), currentBalance + amount);
+            }
         }
-        transactionsTableModel.addRow(row);
+    }
+
+    /**
+     * Busca una wallet por su alias (ignora mayúsculas/minúsculas)
+     */
+    public Wallet getWalletByAlias(String alias) {
+        if (alias == null) return null;
+        for (Wallet w : wallets) {
+            if (w.getAlias().equalsIgnoreCase(alias)) {
+                return w;
+            }
+        }
+        return null;
     }
 }

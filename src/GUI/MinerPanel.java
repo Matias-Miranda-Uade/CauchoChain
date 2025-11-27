@@ -100,6 +100,8 @@ public class MinerPanel extends JPanel {
                             if (!blockchain.pendingTransactions.isEmpty()) {
                                 try {
                                     miner.mine(blockchain);
+                                    // Sincronizar balances de tokens después de minar
+                                    blockchain.tokenRegistry.syncBalancesFromBlockchain(blockchain);
                                     SwingUtilities.invokeLater(() -> {
                                         log("Bloque minado exitosamente");
                                         updateStats();

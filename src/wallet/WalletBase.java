@@ -39,7 +39,7 @@ public abstract class WalletBase {
 	}
 
 	// hicimos esto para poder mostrar el keypar mas tarde en las sublcases
-	protected KeyPair getKeyPair() {
+    public KeyPair getKeyPair() {
         return privateKey;
 	}
 }

@@ -7,6 +7,7 @@ public class Transaction {
     public float amount;
     public float fee;
     public String signature;
+    public String description; // Para describir transacciones especiales como transacciones de tokens
 
     public Transaction(String from, String to, float amount) {
         this.fromAddress = from;
@@ -14,6 +15,7 @@ public class Transaction {
         this.amount = amount;
         this.fee = 0.0f;
         this.signature = null;
+        this.description = null;
     }
 
     public Transaction(String from, String to, float amount, float fee) {
@@ -22,6 +24,15 @@ public class Transaction {
         this.amount = amount;
         this.fee = fee;
         this.signature = null;
+        this.description = null;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getDescription() {
+        return description;
     }
 
     // CALCULA EL HASH

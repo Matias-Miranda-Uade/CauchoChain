@@ -113,6 +113,42 @@ public class TokenRegistry {
     }
 
     /**
+     * Transfiere tokens y crea una transacción en la blockchain
+     */
+    public boolean transferTokenWithTransaction(String tokenId, String from, String to, long amount, Blockchain blockchain) {
+        Token token = getToken(tokenId);
+        if (token == null) {
+            return false;
+        }
+
+        // Primero validar que el saldo sea suficiente
+        long fromBalance = token.getBalance(from);
+        if (fromBalance < amount) {
+            return false;
+        }
+
+        // Hacer la transferencia en el token
+        if (!token.transfer(from, to, amount)) {
+            return false;
+        }
+
+        // Crear una transacción en la blockchain para registrar el movimiento
+        // Usamos una transacción con el formato: token_id:from:to:amount
+        String description = "TOKEN:" + token.getSymbol() + ":" + amount;
+        Transaction tx = new Transaction(from, to, amount);
+        tx.setDescription(description);
+
+        try {
+            blockchain.createTransaction(tx);
+            return true;
+        } catch (Exception e) {
+            // Si falla la creación de la transacción, revertir la transferencia de tokens
+            token.transfer(to, from, amount);
+            return false;
+        }
+    }
+
+    /**
      * Acuña nuevos tokens (solo el creador)
      */
     public boolean mintToken(String tokenId, String to, long amount, String caller) {
@@ -132,6 +168,49 @@ public class TokenRegistry {
             return false;
         }
         return token.burn(from, amount);
+    }
+
+    /**
+     * Sincroniza los balances de tokens basándose en las transacciones confirmadas
+     * en la blockchain. Esto recalcula los balances considerando todas las
+     * transacciones minadas en bloques.
+     */
+    public void syncBalancesFromBlockchain(Blockchain blockchain) {
+        if (blockchain == null) {
+            return;
+        }
+
+        // Para cada token, recalcular sus balances basándose en transacciones confirmadas
+        for (Token token : getAllTokens()) {
+            // Limpiar balances y recalcular
+            Map<String, Long> newBalances = new HashMap<>();
+
+            // Procesar todas las transacciones en la blockchain
+            for (Block block : blockchain.getChain()) {
+                for (Transaction tx : block.getTransactions()) {
+                    // Solo procesar si es una transacción de este token
+                    if (tx.getDescription() != null && tx.getDescription().startsWith("TOKEN:" + token.getSymbol())) {
+                        // Restar del remitente
+                        if (tx.fromAddress != null) {
+                            long currentBalance = newBalances.getOrDefault(tx.fromAddress, 0L);
+                            newBalances.put(tx.fromAddress, currentBalance - (long) tx.amount);
+                        }
+                        // Sumar al destinatario
+                        if (tx.toAddress != null && !tx.toAddress.equals("BURN")) {
+                            long currentBalance = newBalances.getOrDefault(tx.toAddress, 0L);
+                            newBalances.put(tx.toAddress, currentBalance + (long) tx.amount);
+                        }
+                    }
+                }
+            }
+
+            // Actualizar los balances del token
+            for (Map.Entry<String, Long> entry : newBalances.entrySet()) {
+                if (entry.getValue() >= 0) {
+                    token.updateBalance(entry.getKey(), entry.getValue());
+                }
+            }
+        }
     }
 }
 
